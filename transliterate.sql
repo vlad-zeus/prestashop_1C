@@ -1,5 +1,4 @@
-create
-    definer = srebro_root@`%` function transliterate(original varchar(512)) returns varchar(512)
+create function transliterate(original varchar(512)) returns varchar(512)
 BEGIN
 
     DECLARE translit varchar(512) DEFAULT '';
