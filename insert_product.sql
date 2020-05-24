@@ -1,22 +1,20 @@
 create
-    definer = srebro_root@`%` procedure insert_product(IN product_id_in varchar(255),
-                                                       IN product_quantity_in varchar(255),
-                                                       IN default_shop_id_in varchar(255),
-                                                       IN product_price_in varchar(255),
-                                                       IN product_wholesale_price_in varchar(255),
-                                                       IN product_reference_in varchar(255),
-                                                       IN product_weight_in varchar(255),
-                                                       IN product_meta_description_in varchar(255),
-                                                       IN product_meta_keywords_in varchar(255),
-                                                       IN product_meta_title_in varchar(255),
-                                                       IN product_description_in varchar(10000),
-                                                       IN product_description_short_in varchar(1000),
-                                                       IN product_name_in varchar(255),
-                                                       IN list_size_name_in varchar(255),
-                                                       IN list_category_id_in varchar(1000),
-                                                       IN list_feature_id_in varchar(255))
+    definer = srebro_root@`%` procedure insert_product(IN productIdIn varchar(255), IN productQuantityIn varchar(255),
+                                                       IN defaultShopIdIn varchar(255), IN productPriceIn varchar(255),
+                                                       IN productWholesalePriceIn varchar(255),
+                                                       IN productReferenceIn varchar(255),
+                                                       IN productWeightIn varchar(255),
+                                                       IN productMetaDescriptionIn varchar(255),
+                                                       IN productMetaKeywordsIn varchar(255),
+                                                       IN productMetaTitleIn varchar(255),
+                                                       IN productDescriptionIn varchar(10000),
+                                                       IN productDescriptionShortIn varchar(1000),
+                                                       IN productNameIn varchar(255), IN listSizeNameIn varchar(255),
+                                                       IN listCategoryIdIn varchar(1000),
+                                                       IN listFeatureIdIn varchar(255),
+                                                       IN productPromGroupIn varchar(255),
+                                                       IN productPromSubsectionIn varchar(255))
 BEGIN
-
 
     # ! Универсальный, работает как на 1,6 так и на 1,7
 
@@ -24,31 +22,41 @@ BEGIN
     # ! В 8-й я это просто отключил. Но не факт, что у хостера такая возможность будет.
     # ! Так что, пока оставлю в планы, переписать и проверить работоспособность при включенной проверке.
 
+    # * Changelog
+    # * 24.05.2020
+    # add Добавлена проверка характеристики на присутствие значения. Если значение отсутствует - прерываем вставку характеристики.
+    # add До этого, даже если значение характеристики отсутвовало - происходила вставка пустой характеристики. И пустое значение также летео на Prom.ua
+    # fix Исправлена автоматическая подстановка пола и страны.
+    # * 23.05.2020
+    # add В базу добавлена еще одна таблица ps_product_prom_category. В ней храним связку товара с группами/подразделами Prom.ua
+    # add Во входящие параметры добавлены productPromGroupIn, productPromSubsectionIn. Это как раз группы/подразделы Prom.ua
+    # add Добавлена автоматическая подстановка страны и пола, если они явно не указаны в строке характеристик
+
     # * Очистка временной таблицы, в которую мы пишем id товара.
     TRUNCATE z_product;
 
-    # Заменяем запятую на точку, поскольку в базе разделитель - точка
-    SET product_weight_in = REPLACE(product_weight_in, ',', '.');
-    SET product_price_in = REPLACE(product_price_in, ',', '.');
-    SET product_wholesale_price_in = REPLACE(product_wholesale_price_in, ',', '.');
-    SET list_size_name_in = REPLACE(list_size_name_in, ',', '.');
+    # * Заменяем запятую на точку, поскольку в базе разделитель - точка
+    SET productWeightIn = REPLACE(productWeightIn, ',', '.');
+    SET productPriceIn = REPLACE(productPriceIn, ',', '.');
+    SET productWholesalePriceIn = REPLACE(productWholesalePriceIn, ',', '.');
+    SET listSizeNameIn = REPLACE(listSizeNameIn, ',', '.');
 
     # * Работа с описанием товара, убираем переносы строк, ставим теги. Иначе ломает абзацы и прочую хрень. */
     # ? Заменяем перевод строки на теги начала/конца абзаца.
-    SET product_description_in = REPLACE(product_description_in, '\n', '</p><p>');
+    SET productDescriptionIn = REPLACE(productDescriptionIn, '\n', '</p><p>');
 
     # ? Два перевода строки стали вот такими '</p><p></p><p>'. Заменяем на правильное. Заодно расставляем тег выключки по ширине.
-    SET product_description_in = REPLACE(product_description_in, '</p><p></p><p>',
-                                         '</p>\r\n<p style="text-align:justify;">');
+    SET productDescriptionIn =
+            REPLACE(productDescriptionIn, '</p><p></p><p>', '</p>\r\n<p style="text-align:justify;">');
 
     # ? Ставим тег абзаца в начале текста и в конце текста.
-    SET product_description_in = CONCAT('<p style="text-align:justify;">', product_description_in, '</p>');
+    SET productDescriptionIn = CONCAT('<p style="text-align:justify;">', productDescriptionIn, '</p>');
 
 
     # * Отсюда и до конца IF - вставка самого товара.
 
     # ? Если id_product_in пустой, значит товар еще не вставлялся на сайт.
-    IF product_id_in = '' THEN
+    IF productIdIn = '' THEN
 
         # ? Вставка товара.
         INSERT INTO `ps_product` (`id_product`, `id_supplier`, `id_manufacturer`, `id_category_default`,
@@ -61,9 +69,9 @@ BEGIN
                                   `visibility`, `cache_is_pack`, `cache_has_attachments`, `is_virtual`,
                                   `cache_default_attribute`, `date_add`, `date_upd`, `advanced_stock_management`,
                                   `pack_stock_type`)
-        VALUES (NULL, 0, 0, 2, default_shop_id_in, 0, 0, 0, '', '', '0.000000', product_quantity_in, 1,
-                product_price_in,
-                product_wholesale_price_in, '', '0.000000', '0.00', product_reference_in, '', '', product_weight_in,
+        VALUES (NULL, 0, 0, 2, defaultShopIdIn, 0, 0, 0, '', '', '0.000000', productQuantityIn, 1,
+                productPriceIn,
+                productWholesalePriceIn, '', '0.000000', '0.00', productReferenceIn, '', '', productWeightIn,
                 '0.000000', '0.000000',
                 '0.000000', 2, 0, 0, 0, 0, 1, '404', 1, '0000-00-00', 'new', 1, 1, 'both', 0, 0, 0, 0,
                 current_timestamp, current_timestamp, 0, 3);
@@ -72,7 +80,7 @@ BEGIN
         INSERT INTO z_product (id_product) VALUE (LAST_INSERT_ID());
 
         # ? Даем переменной последний вставленный id.
-        SET @product_id = (LAST_INSERT_ID());
+        SET @productId = (LAST_INSERT_ID());
 
         # ? Вставка товара. Привязка к магазину.
         INSERT INTO `ps_product_shop` (`id_product`, `id_shop`, `id_category_default`, `id_tax_rules_group`, `on_sale`,
@@ -82,8 +90,8 @@ BEGIN
                                        `available_for_order`, `available_date`, `condition`, `show_price`, `indexed`,
                                        `visibility`, `cache_default_attribute`, `advanced_stock_management`, `date_add`,
                                        `date_upd`, `pack_stock_type`)
-        VALUES (@product_id, default_shop_id_in, 2, 0, 0, 0, '0.000000', 1, product_price_in,
-                product_wholesale_price_in, '',
+        VALUES (@productId, defaultShopIdIn, 2, 0, 0, 0, '0.000000', 1, productPriceIn,
+                productWholesalePriceIn, '',
                 '0.000000', '0.00', 0, 0, 0, 1, '404', 1, '0000-00-00', 'new', 1, 1, 'both', 0, 0, current_timestamp,
                 current_timestamp, 3);
 
@@ -91,53 +99,63 @@ BEGIN
         INSERT INTO `ps_product_lang` (`id_product`, `id_shop`, `id_lang`, `description`, `description_short`,
                                        `link_rewrite`, `meta_description`, `meta_keywords`, `meta_title`, `name`,
                                        `available_now`, `available_later`)
-        VALUES (@product_id, default_shop_id_in, 1, product_description_in, product_description_short_in,
-                (SELECT transliterate(CONCAT(product_reference_in, '-', product_name_in))), product_meta_description_in,
-                product_meta_keywords_in,
-                product_meta_title_in, product_name_in, 'В наличии!', 'Под заказ!');
+        VALUES (@productId, defaultShopIdIn, 1, productDescriptionIn, productDescriptionShortIn,
+                (SELECT transliterate(CONCAT(productReferenceIn, '-', productNameIn))), productMetaDescriptionIn,
+                productMetaKeywordsIn,
+                productMetaTitleIn, productNameIn, 'В наличии!', 'Под заказ!');
 
         # ? Вставка товара. Остатки.
         INSERT INTO ps_stock_available (id_stock_available, id_product, id_product_attribute, id_shop, id_shop_group,
                                         quantity, depends_on_stock, out_of_stock)
-        VALUES (NULL, @product_id, 0, default_shop_id_in, 0, product_quantity_in, 0, 2);
+        VALUES (NULL, @productId, 0, defaultShopIdIn, 0, productQuantityIn, 0, 2);
+
+        # ? Вставка товара. Записываем категории Prom.ua
+        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection)
+        VALUES (@productId, productPromGroupIn, productPromSubsectionIn);
 
     ELSE
         # ? Даем переменной id товара. Сделано потому что дальше у нас используется id товара, будем теперь к ней обращаться
-        SET @product_id = (product_id_in);
+        SET @productId = (productIdIn);
 
         # ? Обновление товара
         UPDATE ps_product
-        SET quantity        = product_quantity_in,
-            price           = product_price_in,
-            wholesale_price = product_wholesale_price_in,
+        SET quantity        = productQuantityIn,
+            price           = productPriceIn,
+            wholesale_price = productWholesalePriceIn,
             date_upd        = current_timestamp
-        WHERE id_product = product_id_in;
+        WHERE id_product = productIdIn;
 
         # ? Обновление товара. Привязка к магазину.
         UPDATE ps_product_shop
-        SET price           = product_price_in,
-            wholesale_price = product_wholesale_price_in,
+        SET price           = productPriceIn,
+            wholesale_price = productWholesalePriceIn,
             date_upd        = current_timestamp
-        WHERE id_product = product_id_in;
+        WHERE id_product = productIdIn;
 
         # ? Обновление товара. Описание товара.
         UPDATE ps_product_lang
-        SET name              = product_name_in,
-            meta_description  = product_meta_description_in,
-            meta_keywords     = product_meta_keywords_in,
-            meta_title        = product_meta_title_in,
-            description       = product_description_in,
-            description_short = product_description_short_in
-        WHERE id_product = product_id_in;
+        SET name              = productNameIn,
+            meta_description  = productMetaDescriptionIn,
+            meta_keywords     = productMetaKeywordsIn,
+            meta_title        = productMetaTitleIn,
+            description       = productDescriptionIn,
+            description_short = productDescriptionShortIn
+        WHERE id_product = productIdIn;
 
         # ? Обновление товара. Остатки.
         UPDATE ps_stock_available
-        SET quantity = product_quantity_in
-        WHERE id_product = product_id_in;
+        SET quantity = productQuantityIn
+        WHERE id_product = productIdIn;
 
-        # ? Записываем id товара во временную таблицу. 
+        # ? Обновление товара. Записываем категории Prom.ua
+        UPDATE ps_product_prom_category
+        SET prom_group      = productPromGroupIn,
+            prom_subsection = productPromSubsectionIn
+        WHERE id_product = productIdIn;
+
+        # ? Записываем id товара во временную таблицу.
         INSERT INTO z_product (id_product)
-            VALUE (product_id_in);
+            VALUE (productIdIn);
 
     END IF;
 
@@ -147,35 +165,35 @@ BEGIN
     # ? Сначала удаляем  существующие привязки категорий товару.
     DELETE
     FROM ps_category_product
-    WHERE id_product = @product_id;
+    WHERE id_product = @productId;
 
     # ? Присваиваем категорию по умолчанию. Весь товар должен быть присвоен главной категории.
     INSERT IGNORE `ps_category_product` (`id_category`, id_product, `position`)
     SELECT '2',
-           @product_id,
+           @productId,
            MAX(`position`) + 1
     FROM ps_category_product;
     INSERT IGNORE `ps_category_product` (`id_category`, id_product, `position`)
     SELECT '10',
-           @product_id,
+           @productId,
            MAX(`position`) + 1
     FROM ps_category_product;
 
     # ? Присваеваем список категорий переменной.
-    SET @list = list_category_id_in;
+    SET @list = listCategoryIdIn;
 
     # ? Цикл по списку.
     WHILE @list != ''
         DO
             # ? Извлекаем одну категорию
-            SET @one_category = SUBSTRING_INDEX(@list, ':', 1);
+            SET @oneCategory = SUBSTRING_INDEX(@list, ':', 1);
             # Уменьшаем строку первоначальных параметров на длинну одной категории
-            SET @list = SUBSTRING(@list, CHAR_LENGTH(@one_category) + 2);
+            SET @list = SUBSTRING(@list, CHAR_LENGTH(@oneCategory) + 2);
 
             # ? Вставка категории
             INSERT `ps_category_product` (`id_category`, id_product, `position`)
-            SELECT @one_category,
-                   @product_id,
+            SELECT @oneCategory,
+                   @productId,
                    MAX(`position`) + 1
             FROM ps_category_product;
         END WHILE;
@@ -186,49 +204,74 @@ BEGIN
     # ? Удаляем привязки характеристики товара.
     DELETE
     FROM ps_feature_product
-    WHERE id_product = @product_id;
+    WHERE id_product = @productId;
 
     # ? Присваеваем список характеристик переменной.
-    SET @list = list_feature_id_in;
+    SET @list = listFeatureIdIn;
+
+    # ? Проверяем, есть ли в строке страна производителя. Если нет - применяем Украина
+    SET @countryExists = (SELECT LOCATE('7:', @list));
+    IF @countryExists = 0
+    THEN
+        INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
+        VALUES (7, @productId, (SELECT ps_feature_value_lang.id_feature_value
+                                FROM ps_feature_value_lang
+                                WHERE ps_feature_value_lang.value = 'Украина'
+                                LIMIT 1));
+    end if;
+
+    # ? Проверяем, есть ли в строке пол. Если нет - применяем Унисекс
+    SET @countryExists = (SELECT LOCATE('11:', @list));
+    IF @countryExists = 0
+    THEN
+        INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
+        VALUES (11, @productId, (SELECT ps_feature_value_lang.id_feature_value
+                                 FROM ps_feature_value_lang
+                                 WHERE ps_feature_value_lang.value = 'Унисекс'
+                                 LIMIT 1));
+    end if;
 
     # ? Цикл по списку.
     WHILE @list != ''
         DO
             # ? Извлекаем одну характеристику.
-            SET @feature_one_list = SUBSTRING_INDEX(@list, ';', 1);
+            SET @featureOneList = SUBSTRING_INDEX(@list, ';', 1);
             # ? Извлекаем ID характеристики.
-            SET @feature_value_id_in = SUBSTRING_INDEX(@feature_one_list, ':', 1);
+            SET @featureValueIdIn = SUBSTRING_INDEX(@featureOneList, ':', 1);
             # ? Извлекаем значение характеристики.
-            SET @feature_value_in = SUBSTRING_INDEX((SUBSTRING_INDEX(@feature_one_list, ':', 2)), ':', -1);
+            SET @featureValueIn = SUBSTRING_INDEX((SUBSTRING_INDEX(@featureOneList, ':', 2)), ':', -1);
             # ? Уменьшаем строку первоначальных параметров на длинну одной категории.
-            SET @list = SUBSTRING(@list, CHAR_LENGTH(@feature_one_list) + 2);
+            SET @list = SUBSTRING(@list, CHAR_LENGTH(@featureOneList) + 2);
 
             # ? Вот тут мы делаем проверку на существование названия такой характеристики. Если есть - просто присваиваем товару. Иначе будет куча одинаковых записей.
-            SET @feature_value_id_old = (SELECT EXISTS(SELECT ps_feature_value_lang.id_feature_value
-                                                       FROM ps_feature_value_lang
-                                                       WHERE ps_feature_value_lang.value = @feature_value_in));
+            SET @featureValueIdOld = (SELECT EXISTS(SELECT ps_feature_value_lang.id_feature_value
+                                                    FROM ps_feature_value_lang
+                                                    WHERE ps_feature_value_lang.value = @featureValueIn));
 
             # ? Есть такая характеристика.
-            IF @feature_value_id_old = 1 THEN
-
-                # Присваиваем товару
-                INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
-                VALUES (@feature_value_id_in, @product_id, (SELECT ps_feature_value_lang.id_feature_value
+            IF @featureValueIdOld = 1 THEN
+                # ? Проверяем, если в характеристике нет значения - не запускаем присваивание характеристики. Иначе характеристика будет, а значения нет. И будет и на пром лететь пустая
+                IF @featureValueIn <> '' THEN
+                    # ? Присваиваем товару
+                    INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
+                    VALUES (@featureValueIdIn, @productId, (SELECT ps_feature_value_lang.id_feature_value
                                                             FROM ps_feature_value_lang
-                                                            WHERE ps_feature_value_lang.value = @feature_value_in
+                                                            WHERE ps_feature_value_lang.value = @featureValueIn
                                                             LIMIT 1));
+                END IF;
 
                 # ? Нет такой характеристики.
             ELSE
-
-                # Создаем новую характеристику.
-                INSERT IGNORE `ps_feature_value` (id_feature_value, id_feature, custom)
-                VALUES (DEFAULT, @feature_value_id_in, 0);
-                INSERT IGNORE `ps_feature_value_lang` (id_feature_value, id_lang, value)
-                VALUES (LAST_INSERT_ID(), 1, @feature_value_in);
-                INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
-                VALUES (@feature_value_id_in, @product_id, LAST_INSERT_ID());
-
+                # ? Проверяем, если в характеристике нет значения - не запускаем присваивание характеристики. Иначе характеристика будет, а значения нет. И будет и на пром лететь пустая
+                IF @featureValueIn <> '' THEN
+                    # ? Создаем новую характеристику.
+                    INSERT IGNORE `ps_feature_value` (id_feature_value, id_feature, custom)
+                    VALUES (DEFAULT, @featureValueIdIn, 0);
+                    INSERT IGNORE `ps_feature_value_lang` (id_feature_value, id_lang, value)
+                    VALUES (LAST_INSERT_ID(), 1, @featureValueIn);
+                    INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
+                    VALUES (@featureValueIdIn, @productId, LAST_INSERT_ID());
+                END IF;
             END IF;
 
         END WHILE;
@@ -239,14 +282,14 @@ BEGIN
     # ? Удаляем размеры из базы.
     DELETE
     FROM ps_attribute_impact
-    WHERE id_product = @product_id;
+    WHERE id_product = @productId;
     BEGIN
         DECLARE id_product_att int;
         DECLARE done integer DEFAULT 0;
         DECLARE cur1 CURSOR FOR
             SELECT id_product_attribute AS id_product_att
             FROM ps_product_attribute
-            WHERE id_product = @product_id;
+            WHERE id_product = @productId;
         DECLARE CONTINUE HANDLER FOR SQLSTATE '02000' SET done = 1;
         OPEN cur1;
         WHILE done = 0
@@ -266,41 +309,41 @@ BEGIN
     END;
 
     # ? Присваеваем список размеров переменной.
-    SET @list = list_size_name_in;
+    SET @list = listSizeNameIn;
 
     # ? Цикл по списку
     WHILE @list != ''
         DO
             # ? Извлекаем один размер.
-            SET @size_one = SUBSTRING_INDEX(@list, ';', 1);
+            SET @sizeOne = SUBSTRING_INDEX(@list, ';', 1);
             # ? Извлекаем название размера
-            SET @size_name = SUBSTRING_INDEX(@size_one, ':', 1);
+            SET @sizeName = SUBSTRING_INDEX(@sizeOne, ':', 1);
             # ? Извлекаем количество размера
-            SET @size_quantity = SUBSTRING_INDEX((SUBSTRING_INDEX(@size_one, ':', 2)), ':', -1);
+            SET @sizeQuantity = SUBSTRING_INDEX((SUBSTRING_INDEX(@sizeOne, ':', 2)), ':', -1);
             # ? Извлекаем цену
-            SET @size_price = SUBSTRING_INDEX((SUBSTRING_INDEX(@size_one, ':', 3)), ':', -1);
+            SET @sizePrice = SUBSTRING_INDEX((SUBSTRING_INDEX(@sizeOne, ':', 3)), ':', -1);
             # ? Уменьшаем строку первоначальных параметров на длинну одного размера
-            SET @list = SUBSTRING(@list, CHAR_LENGTH(@size_one) + 2);
+            SET @list = SUBSTRING(@list, CHAR_LENGTH(@sizeOne) + 2);
             # ? Влияние на цену. Высчитываем разницу
-            SET @size_price_impact = (@size_price - product_price_in);
+            SET @sizePriceImpact = (@sizePrice - productPriceIn);
 
             # ? Минимальная цена должна быть по умолчанию. Минимальной считаем цену price_in
-            IF @size_price_impact > 0 THEN
-                SET @size_price_default = NULL;
+            IF @sizePriceImpact > 0 THEN
+                SET @sizePriceDefault = NULL;
             ELSE
-                SET @size_price_default = 1;
+                SET @sizePriceDefault = 1;
             END IF;
 
             # ? Проверяем есть ли такой размер в базе.
-            SET @size_id = (SELECT EXISTS(SELECT ps_attribute.id_attribute
-                                          FROM ps_attribute
-                                                   INNER JOIN ps_attribute_lang
-                                                              ON ps_attribute.id_attribute = ps_attribute_lang.id_attribute
-                                          WHERE ps_attribute.id_attribute_group = 1
-                                            AND ps_attribute_lang.name = @size_name));
+            SET @sizeId = (SELECT EXISTS(SELECT ps_attribute.id_attribute
+                                         FROM ps_attribute
+                                                  INNER JOIN ps_attribute_lang
+                                                             ON ps_attribute.id_attribute = ps_attribute_lang.id_attribute
+                                         WHERE ps_attribute.id_attribute_group = 1
+                                           AND ps_attribute_lang.name = @sizeName));
 
             # ? Если размера нет.
-            IF @size_id = 0 THEN
+            IF @sizeId = 0 THEN
                 # ? Вставка размера.
                 INSERT INTO ps_attribute (id_attribute, id_attribute_group, color, `position`)
                 SELECT NULL,
@@ -311,157 +354,155 @@ BEGIN
                 WHERE id_attribute_group = 1;
 
                 # ? Загоняем последний созданный ID в переменную.
-                SET @size_id = LAST_INSERT_ID();
+                SET @sizeId = LAST_INSERT_ID();
 
                 # ? Присваиваем размер языку магазина.
                 INSERT INTO ps_attribute_lang (id_attribute, id_lang, name)
-                VALUES (@size_id, 1, @size_name);
+                VALUES (@sizeId, 1, @sizeName);
                 INSERT INTO ps_attribute_lang (id_attribute, id_lang, name)
-                VALUES (@size_id, 2, @size_name);
+                VALUES (@sizeId, 2, @sizeName);
 
                 # ? Присваиваем размер магазину.
                 INSERT INTO ps_attribute_shop (id_attribute, id_shop)
-                VALUES (@size_id, default_shop_id_in);
+                VALUES (@sizeId, defaultShopIdIn);
 
                 # ? Теперь создаем комбинацию товар/размер. Тут же вставляем остаток.
                 INSERT INTO ps_product_attribute (id_product_attribute, id_product, reference, wholesale_price, price,
                                                   ecotax, quantity, weight, unit_price_impact, minimal_quantity)
-                VALUES (DEFAULT, @product_id, product_reference_in, 0, 0, 0, @size_quantity, 0, 0, 1);
+                VALUES (DEFAULT, @productId, productReferenceIn, 0, 0, 0, @sizeQuantity, 0, 0, 1);
 
                 # ? Загоняем последний созданный ID в переменную.
-                SET @attribute_id = LAST_INSERT_ID();
+                SET @attributeId = LAST_INSERT_ID();
 
                 # ? И еще раз остаток
                 INSERT INTO ps_stock_available (id_product, id_product_attribute, id_shop, id_shop_group, quantity,
                                                 depends_on_stock, out_of_stock)
-                VALUES (@product_id, @attribute_id, default_shop_id_in, 0, @size_quantity, 0, 2);
+                VALUES (@productId, @attributeId, defaultShopIdIn, 0, @sizeQuantity, 0, 2);
 
                 # ? Привязываем вновь созданную комбинацию магазину.
                 # ? Проверяем на привязку к магазину по умолчанию. Нужно для мультимагазина.
-                SET @default_id = (SELECT EXISTS(SELECT ps_product_attribute_shop.id_product_attribute
-                                                 FROM ps_product_attribute_shop
-                                                 WHERE ps_product_attribute_shop.id_product = @product_id
-                                                   AND ps_product_attribute_shop.id_shop = default_shop_id_in
-                                                   AND ps_product_attribute_shop.id_product_attribute = @attribute_id));
-                IF @default_id = 0 THEN
+                SET @defaultId = (SELECT EXISTS(SELECT ps_product_attribute_shop.id_product_attribute
+                                                FROM ps_product_attribute_shop
+                                                WHERE ps_product_attribute_shop.id_product = @productId
+                                                  AND ps_product_attribute_shop.id_shop = defaultShopIdIn
+                                                  AND ps_product_attribute_shop.id_product_attribute = @attributeId));
+                IF @defaultId = 0 THEN
                     INSERT INTO `ps_product_attribute_shop` (`id_product_attribute`, `id_product`, `wholesale_price`,
                                                              `price`, `ecotax`, `weight`, `unit_price_impact`,
                                                              `minimal_quantity`, `default_on`, `available_date`,
                                                              `id_shop`)
-                    VALUES (@attribute_id, @product_id, '0', @size_price_impact, '0', '0', '0', '1',
-                            @size_price_default,
-                            '0000-00-00', default_shop_id_in);
+                    VALUES (@attributeId, @productId, '0', @sizePriceImpact, '0', '0', '0', '1',
+                            @sizePriceDefault,
+                            '0000-00-00', defaultShopIdIn);
                 ELSE
                     INSERT INTO `ps_product_attribute_shop` (`id_product_attribute`, `id_product`, `wholesale_price`,
                                                              `price`, `ecotax`, `weight`, `unit_price_impact`,
                                                              `minimal_quantity`, `default_on`, `available_date`,
                                                              `id_shop`)
-                    VALUES (@attribute_id, @product_id, '0', @size_price_impact, '0', '0', '0', '1',
-                            @size_price_default,
-                            '0000-00-00', default_shop_id_in);
+                    VALUES (@attributeId, @productId, '0', @sizePriceImpact, '0', '0', '0', '1',
+                            @sizePriceDefault,
+                            '0000-00-00', defaultShopIdIn);
                 END IF;
 
                 # ? Сопоставление ID размера и ID атрибута.
                 INSERT INTO ps_product_attribute_combination (id_attribute, id_product_attribute)
-                VALUES (@size_id, @attribute_id);
+                VALUES (@sizeId, @attributeId);
 
                 # ? Влияние на цену и вес.
                 INSERT INTO ps_attribute_impact (id_product, id_attribute, weight, price)
-                VALUES (@product_id, @size_id, 0.000000, 0.00)
+                VALUES (@productId, @sizeId, 0.000000, 0.00)
                 ON DUPLICATE KEY UPDATE price = '0.00', weight = '0.000000';
 
             ELSE
                 # ? Если размер есть.
                 # ? Теперь проверяем, создана ли комбинация на этот размер.
                 # ? Должен выполняться если мы получили size_id.
-                SET @size_id = (SELECT ps_attribute.id_attribute
-                                FROM ps_attribute
-                                         INNER JOIN ps_attribute_lang
-                                                    ON ps_attribute.id_attribute = ps_attribute_lang.id_attribute
-                                WHERE ps_attribute.id_attribute_group = 1
-                                  AND ps_attribute_lang.name = @size_name);
+                SET @sizeId = (SELECT ps_attribute.id_attribute
+                               FROM ps_attribute
+                                        INNER JOIN ps_attribute_lang
+                                                   ON ps_attribute.id_attribute = ps_attribute_lang.id_attribute
+                               WHERE ps_attribute.id_attribute_group = 1
+                                 AND ps_attribute_lang.name = @sizeName);
 
-                SET @attribute_id = (EXISTS(SELECT ps_product_attribute.id_product_attribute
-                                            FROM ps_product_attribute
-                                                     INNER JOIN ps_product_attribute_combination
-                                                                ON ps_product_attribute.id_product_attribute =
-                                                                   ps_product_attribute_combination.id_product_attribute
-                                            WHERE ps_product_attribute.id_product = @product_id
-                                              AND ps_product_attribute_combination.id_attribute = @size_id));
+                SET @attributeId = (EXISTS(SELECT ps_product_attribute.id_product_attribute
+                                           FROM ps_product_attribute
+                                                    INNER JOIN ps_product_attribute_combination
+                                                               ON ps_product_attribute.id_product_attribute =
+                                                                  ps_product_attribute_combination.id_product_attribute
+                                           WHERE ps_product_attribute.id_product = @productId
+                                             AND ps_product_attribute_combination.id_attribute = @sizeId));
 
                 # ? Если запрос не возвращает ничего.
-                IF @attribute_id = 0 THEN
+                IF @attributeId = 0 THEN
 
                     # ? Теперь создаем комбинацию товар/размер. Тут же вставляем остаток.
                     INSERT INTO ps_product_attribute (id_product_attribute, id_product, reference, wholesale_price,
                                                       price, ecotax, quantity, weight, unit_price_impact,
                                                       minimal_quantity)
-                    VALUES (DEFAULT, @product_id, product_reference_in, 0, 0, 0, @size_quantity, 0, 0, 1);
+                    VALUES (DEFAULT, @productId, productReferenceIn, 0, 0, 0, @sizeQuantity, 0, 0, 1);
 
                     # ? Загоняем последний созданный ID в переменную.
-                    SET @attribute_id = LAST_INSERT_ID();
+                    SET @attributeId = LAST_INSERT_ID();
 
                     # ? И еще раз остаток.
                     INSERT INTO ps_stock_available (id_product, id_product_attribute, id_shop, id_shop_group, quantity,
                                                     depends_on_stock, out_of_stock)
-                    VALUES (@product_id, @attribute_id, default_shop_id_in, 0, @size_quantity, 0, 2);
+                    VALUES (@productId, @attributeId, defaultShopIdIn, 0, @sizeQuantity, 0, 2);
 
                     # ? Привязываем вновь созданную комбинацию магазину.
                     # ? Проверяем на привязку к магазину по умолчанию.
-                    SET @default_id = (SELECT ps_product_attribute_shop.id_product_attribute
-                                       FROM ps_product_attribute_shop
-                                       WHERE ps_product_attribute_shop.id_product = @product_id
-                                         AND ps_product_attribute_shop.id_shop = default_shop_id_in
-                                         AND ps_product_attribute_shop.id_product_attribute = @attribute_id);
-                    IF @default_id = '' THEN
+                    SET @defaultId = (SELECT ps_product_attribute_shop.id_product_attribute
+                                      FROM ps_product_attribute_shop
+                                      WHERE ps_product_attribute_shop.id_product = @productId
+                                        AND ps_product_attribute_shop.id_shop = defaultShopIdIn
+                                        AND ps_product_attribute_shop.id_product_attribute = @attributeId);
+                    IF @defaultId = '' THEN
                         INSERT INTO `ps_product_attribute_shop` (`id_product_attribute`, `id_product`,
                                                                  `wholesale_price`, `price`, `ecotax`, `weight`,
                                                                  `unit_price_impact`, `minimal_quantity`, `default_on`,
                                                                  `available_date`, `id_shop`)
-                        VALUES (@attribute_id, @product_id, '0', @size_price_impact, '0', '0', '0', '1',
-                                @size_price_default,
-                                '0000-00-00', default_shop_id_in);
+                        VALUES (@attributeId, @productId, '0', @sizePriceImpact, '0', '0', '0', '1',
+                                @sizePriceDefault,
+                                '0000-00-00', defaultShopIdIn);
                     ELSE
                         INSERT INTO `ps_product_attribute_shop` (`id_product_attribute`, `id_product`,
                                                                  `wholesale_price`, `price`, `ecotax`, `weight`,
                                                                  `unit_price_impact`, `minimal_quantity`, `default_on`,
                                                                  `available_date`, `id_shop`)
-                        VALUES (@attribute_id, @product_id, '0', @size_price_impact, '0', '0', '0', '1',
-                                @size_price_default,
-                                '0000-00-00', default_shop_id_in);
+                        VALUES (@attributeId, @productId, '0', @sizePriceImpact, '0', '0', '0', '1',
+                                @sizePriceDefault,
+                                '0000-00-00', defaultShopIdIn);
                     END IF;
 
                     # ? Сопоставление ID размера и ID атрибута.
                     INSERT INTO ps_product_attribute_combination (id_attribute, id_product_attribute)
-                    VALUES (@size_id, @attribute_id);
+                    VALUES (@sizeId, @attributeId);
 
                     # ? Влияние на цену и вес.
                     INSERT INTO ps_attribute_impact (id_product, id_attribute, weight, price)
-                    VALUES (@product_id, @size_id, 0.000000, @size_price_impact)
-                    ON DUPLICATE KEY UPDATE price = @size_price_impact, weight = '0.000000';
+                    VALUES (@productId, @sizeId, 0.000000, @sizePriceImpact)
+                    ON DUPLICATE KEY UPDATE price = @sizePriceImpact, weight = '0.000000';
 
                     # ? Если вернул - просто обновляем остатки.
                 ELSE
-                    SET @attribute_id = (SELECT ps_product_attribute.id_product_attribute
-                                         FROM ps_product_attribute
-                                                  INNER JOIN ps_product_attribute_combination
-                                                             ON ps_product_attribute.id_product_attribute =
-                                                                ps_product_attribute_combination.id_product_attribute
-                                         WHERE ps_product_attribute.id_product = @product_id
-                                           AND ps_product_attribute_combination.id_attribute = @size_id);
+                    SET @attributeId = (SELECT ps_product_attribute.id_product_attribute
+                                        FROM ps_product_attribute
+                                                 INNER JOIN ps_product_attribute_combination
+                                                            ON ps_product_attribute.id_product_attribute =
+                                                               ps_product_attribute_combination.id_product_attribute
+                                        WHERE ps_product_attribute.id_product = @productId
+                                          AND ps_product_attribute_combination.id_attribute = @sizeId);
                     UPDATE ps_product_attribute
-                    SET quantity = @size_quantity,
-                        price    = @size_price_impact
-                    WHERE id_product = @product_id
-                      AND id_product_attribute = @attribute_id;
+                    SET quantity = @sizeQuantity,
+                        price    = @sizePriceImpact
+                    WHERE id_product = @productId
+                      AND id_product_attribute = @attributeId;
                     UPDATE ps_stock_available
-                    SET quantity = @size_quantity
-                    WHERE id_product_attribute = @attribute_id
-                      AND id_product = @product_id;
-
+                    SET quantity = @sizeQuantity
+                    WHERE id_product_attribute = @attributeId
+                      AND id_product = @productId;
                 END IF;
             END IF;
         END WHILE;
-
 END;
 
