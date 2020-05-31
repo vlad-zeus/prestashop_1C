@@ -13,7 +13,8 @@ create
                                                        IN listCategoryIdIn varchar(1000),
                                                        IN listFeatureIdIn varchar(255),
                                                        IN productPromGroupIn varchar(255),
-                                                       IN productPromSubsectionIn varchar(255))
+                                                       IN productPromSubsectionIn varchar(255),
+                                                       IN productPromGroupDescriptionIn varchar(1000))
 BEGIN
 
     # ! Универсальный, работает как на 1,6 так и на 1,7
@@ -23,10 +24,18 @@ BEGIN
     # ! Так что, пока оставлю в планы, переписать и проверить работоспособность при включенной проверке.
 
     # * Changelog
+    # * 30.05.2020
+    # add В таблицу ps_product_prom_category добавлен столбец prom_group_description.
+    
+    # * 27.05.2020
+    # fix Исправлено присвоение категорий Prom.ua при обновлениии товара. Теперь не просто Update, а Insert or Update.
+    # fix Ошибка была потому что товар уже есть, мы его обновляем. Но в таблице категорий Prom.ua записей не было. Обновлять было нечего.
+    
     # * 24.05.2020
     # add Добавлена проверка характеристики на присутствие значения. Если значение отсутствует - прерываем вставку характеристики.
-    # add До этого, даже если значение характеристики отсутвовало - происходила вставка пустой характеристики. И пустое значение также летео на Prom.ua
-    # fix Исправлена автоматическая подстановка пола и страны.
+    # add До этого, даже если значение характеристики отсутвовало - происходила вставка пустой характеристики. И пустое значение также летело на Prom.ua
+    # fix Исправлена автоматическая подстановка пола и страны. Было неправильно определено условие срабатывания.
+    
     # * 23.05.2020
     # add В базу добавлена еще одна таблица ps_product_prom_category. В ней храним связку товара с группами/подразделами Prom.ua
     # add Во входящие параметры добавлены productPromGroupIn, productPromSubsectionIn. Это как раз группы/подразделы Prom.ua
@@ -46,8 +55,7 @@ BEGIN
     SET productDescriptionIn = REPLACE(productDescriptionIn, '\n', '</p><p>');
 
     # ? Два перевода строки стали вот такими '</p><p></p><p>'. Заменяем на правильное. Заодно расставляем тег выключки по ширине.
-    SET productDescriptionIn =
-            REPLACE(productDescriptionIn, '</p><p></p><p>', '</p>\r\n<p style="text-align:justify;">');
+    SET productDescriptionIn = REPLACE(productDescriptionIn, '</p><p></p><p>', '</p>\r\n<p style="text-align:justify;">');
 
     # ? Ставим тег абзаца в начале текста и в конце текста.
     SET productDescriptionIn = CONCAT('<p style="text-align:justify;">', productDescriptionIn, '</p>');
@@ -110,8 +118,8 @@ BEGIN
         VALUES (NULL, @productId, 0, defaultShopIdIn, 0, productQuantityIn, 0, 2);
 
         # ? Вставка товара. Записываем категории Prom.ua
-        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection)
-        VALUES (@productId, productPromGroupIn, productPromSubsectionIn);
+        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection, prom_group_description)
+        VALUES (@productId, productPromGroupIn, productPromSubsectionIn, productPromGroupDescriptionIn);
 
     ELSE
         # ? Даем переменной id товара. Сделано потому что дальше у нас используется id товара, будем теперь к ней обращаться
@@ -148,10 +156,11 @@ BEGIN
         WHERE id_product = productIdIn;
 
         # ? Обновление товара. Записываем категории Prom.ua
-        UPDATE ps_product_prom_category
-        SET prom_group      = productPromGroupIn,
-            prom_subsection = productPromSubsectionIn
-        WHERE id_product = productIdIn;
+        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection, prom_group_description)
+        VALUES (@productId, productPromGroupIn, productPromSubsectionIn, productPromGroupDescriptionIn)
+        ON DUPLICATE KEY UPDATE prom_group = productPromGroupIn,
+                                prom_subsection = productPromSubsectionIn,
+                                prom_group_description = productPromGroupDescriptionIn;
 
         # ? Записываем id товара во временную таблицу.
         INSERT INTO z_product (id_product)
@@ -187,7 +196,7 @@ BEGIN
         DO
             # ? Извлекаем одну категорию
             SET @oneCategory = SUBSTRING_INDEX(@list, ':', 1);
-            # Уменьшаем строку первоначальных параметров на длинну одной категории
+            # ? Уменьшаем строку первоначальных параметров на длинну одной категории
             SET @list = SUBSTRING(@list, CHAR_LENGTH(@oneCategory) + 2);
 
             # ? Вставка категории
@@ -228,7 +237,7 @@ BEGIN
         VALUES (11, @productId, (SELECT ps_feature_value_lang.id_feature_value
                                  FROM ps_feature_value_lang
                                  WHERE ps_feature_value_lang.value = 'Унисекс'
-                                 LIMIT 1));
+                                 LIMIT 1)) ;
     end if;
 
     # ? Цикл по списку.
