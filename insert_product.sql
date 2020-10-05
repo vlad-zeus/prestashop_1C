@@ -5,7 +5,7 @@ create
                                                        IN productReferenceIn varchar(255),
                                                        IN productWeightIn varchar(255),
                                                        IN productMetaDescriptionIn varchar(255),
-                                                       IN productMetaKeywordsIn varchar(255),
+                                                       IN productMetaKeywordsIn varchar(1024),
                                                        IN productMetaTitleIn varchar(255),
                                                        IN productDescriptionIn varchar(10000),
                                                        IN productDescriptionShortIn varchar(1000),
@@ -24,21 +24,26 @@ BEGIN
     # ! Так что, пока оставлю в планы, переписать и проверить работоспособность при включенной проверке.
 
     # * Changelog
+    # * 05.10.2020
+    # fix Добавлена дополнительная проверка на комбинацию по умолчанию. Бывает так, что все размеры имеют одинаковую цену. Тогда скрипт пытается каждой комбинации присвоить статус умолчательной, и сразу улетаем в ошибку.
+    # * 30.06.2020
+    # add Добавлен столбец prom_meta_keys в ps_product_prom_category. Теперь сюда скидываем ключевые слова для prom. Длинна для PrestaShop (255) и prom.ua (1024) разная, поэтому пишем теперь сюда.
+    # fix Теперь строку productMetaKeywordsIn обрезаем до 255 символов перед вставкой в product_lang
+    # * 19.06.2020
+    # add Добавлена проверка - наличие у товара категории prom.ua (productPromGroupIn). Если она присутсвует - тогда вставляем/обновляем товар в таблице  ps_product_prom_category.
+    # add Добавлена проверка - если товар вставляем в ps_product_prom_category, у него может не быть productPromSubsectionIn и/или productPromGroupDescriptionIn. Присваиваем этим параметрам NULL
     # * 30.05.2020
-    # add В таблицу ps_product_prom_category добавлен столбец prom_group_description.
-    
+    # add В таблицу ps_product_prom_category добавлен столбец prom_group_description. Необходим для генерации категорий в шапке yml файла для prom.ua.
     # * 27.05.2020
-    # fix Исправлено присвоение категорий Prom.ua при обновлениии товара. Теперь не просто Update, а Insert or Update.
-    # fix Ошибка была потому что товар уже есть, мы его обновляем. Но в таблице категорий Prom.ua записей не было. Обновлять было нечего.
-    
+    # fix Исправлено присвоение категорий prom.ua при обновлениии товара. Теперь не просто Update, а Insert or Update.
+    # fix Ошибка была потому что товар уже есть, мы его обновляем. Но в таблице категорий prom.ua записей не было. Обновлять было нечего.
     # * 24.05.2020
     # add Добавлена проверка характеристики на присутствие значения. Если значение отсутствует - прерываем вставку характеристики.
-    # add До этого, даже если значение характеристики отсутвовало - происходила вставка пустой характеристики. И пустое значение также летело на Prom.ua
+    # add До этого, даже если значение характеристики отсутвовало - происходила вставка пустой характеристики. И пустое значение также летело на prom.ua
     # fix Исправлена автоматическая подстановка пола и страны. Было неправильно определено условие срабатывания.
-    
     # * 23.05.2020
-    # add В базу добавлена еще одна таблица ps_product_prom_category. В ней храним связку товара с группами/подразделами Prom.ua
-    # add Во входящие параметры добавлены productPromGroupIn, productPromSubsectionIn. Это как раз группы/подразделы Prom.ua
+    # add В базу добавлена еще одна таблица ps_product_prom_category. В ней храним связку товара с группами/подразделами prom.ua
+    # add Во входящие параметры добавлены productPromGroupIn, productPromSubsectionIn. Это как раз группы/подразделы prom.ua
     # add Добавлена автоматическая подстановка страны и пола, если они явно не указаны в строке характеристик
 
     # * Очистка временной таблицы, в которую мы пишем id товара.
@@ -107,9 +112,9 @@ BEGIN
         INSERT INTO `ps_product_lang` (`id_product`, `id_shop`, `id_lang`, `description`, `description_short`,
                                        `link_rewrite`, `meta_description`, `meta_keywords`, `meta_title`, `name`,
                                        `available_now`, `available_later`)
-        VALUES (@productId, defaultShopIdIn, 1, productDescriptionIn, productDescriptionShortIn,
+        VALUES (@productId, defaultShopIdIn, 3, productDescriptionIn, productDescriptionShortIn,
                 (SELECT transliterate(CONCAT(productReferenceIn, '-', productNameIn))), productMetaDescriptionIn,
-                productMetaKeywordsIn,
+                SUBSTRING(productMetaKeywordsIn, 0, 255),
                 productMetaTitleIn, productNameIn, 'В наличии!', 'Под заказ!');
 
         # ? Вставка товара. Остатки.
@@ -117,9 +122,17 @@ BEGIN
                                         quantity, depends_on_stock, out_of_stock)
         VALUES (NULL, @productId, 0, defaultShopIdIn, 0, productQuantityIn, 0, 2);
 
-        # ? Вставка товара. Записываем категории Prom.ua
-        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection, prom_group_description)
-        VALUES (@productId, productPromGroupIn, productPromSubsectionIn, productPromGroupDescriptionIn);
+        # ? Вставка товара. Записываем категории prom.ua
+        IF productPromGroupIn <>'' THEN
+        IF productPromSubsectionIn = '' THEN
+            set productPromSubsectionIn = NULL;
+        end if;
+        IF productPromGroupDescriptionIn = '' THEN
+            set productPromGroupDescriptionIn = NULL;
+        end if;
+        INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection, prom_group_description, prom_meta_keys)
+        VALUES (@productId, productPromGroupIn, productPromSubsectionIn, productPromGroupDescriptionIn, productMetaKeywordsIn);
+        end if;
 
     ELSE
         # ? Даем переменной id товара. Сделано потому что дальше у нас используется id товара, будем теперь к ней обращаться
@@ -144,23 +157,32 @@ BEGIN
         UPDATE ps_product_lang
         SET name              = productNameIn,
             meta_description  = productMetaDescriptionIn,
-            meta_keywords     = productMetaKeywordsIn,
+            meta_keywords     = SUBSTRING(productMetaKeywordsIn, 0, 255),
             meta_title        = productMetaTitleIn,
             description       = productDescriptionIn,
             description_short = productDescriptionShortIn
-        WHERE id_product = productIdIn;
+        WHERE id_product = @productId;
 
         # ? Обновление товара. Остатки.
         UPDATE ps_stock_available
         SET quantity = productQuantityIn
         WHERE id_product = productIdIn;
 
-        # ? Обновление товара. Записываем категории Prom.ua
+        # ? Обновление товара. Записываем категории prom.ua
+        IF productPromGroupIn <>'' THEN
+        IF productPromSubsectionIn = '' THEN
+            set productPromSubsectionIn = NULL;
+        end if;
+        IF productPromGroupDescriptionIn = '' THEN
+            set productPromGroupDescriptionIn = NULL;
+        end if;
         INSERT INTO ps_product_prom_category (id_product, prom_group, prom_subsection, prom_group_description)
         VALUES (@productId, productPromGroupIn, productPromSubsectionIn, productPromGroupDescriptionIn)
         ON DUPLICATE KEY UPDATE prom_group = productPromGroupIn,
                                 prom_subsection = productPromSubsectionIn,
-                                prom_group_description = productPromGroupDescriptionIn;
+                                prom_group_description = productPromGroupDescriptionIn,
+                                prom_meta_keys = productMetaKeywordsIn;
+        end if;
 
         # ? Записываем id товара во временную таблицу.
         INSERT INTO z_product (id_product)
@@ -277,7 +299,7 @@ BEGIN
                     INSERT IGNORE `ps_feature_value` (id_feature_value, id_feature, custom)
                     VALUES (DEFAULT, @featureValueIdIn, 0);
                     INSERT IGNORE `ps_feature_value_lang` (id_feature_value, id_lang, value)
-                    VALUES (LAST_INSERT_ID(), 1, @featureValueIn);
+                    VALUES (LAST_INSERT_ID(), 3, @featureValueIn);
                     INSERT IGNORE `ps_feature_product` (id_feature, id_product, id_feature_value)
                     VALUES (@featureValueIdIn, @productId, LAST_INSERT_ID());
                 END IF;
@@ -343,6 +365,19 @@ BEGIN
                 SET @sizePriceDefault = 1;
             END IF;
 
+            # ? Дополнительная проверка. Бывает так, что цена не изменяется в зависимости от размера. И тогда из-за предыдущего условия генерируется ошибка.
+            # ? Проверяем, есть ли уже комбинация по умолчанию. Если есть, тогда переменной @sizePriceDefault присваиваем 0
+
+            SET @sizePriceDefaultAvailable = (SELECT EXISTS(SELECT ps_product_attribute_shop.id_product
+                                                            FROM ps_product_attribute_shop
+                                                            WHERE ps_product_attribute_shop.default_on = 1
+                                                              AND ps_product_attribute_shop.id_product = @productId));
+
+            IF @sizePriceDefaultAvailable = 1 THEN
+                SET @sizePriceDefault = NULL;
+            END IF;
+
+
             # ? Проверяем есть ли такой размер в базе.
             SET @sizeId = (SELECT EXISTS(SELECT ps_attribute.id_attribute
                                          FROM ps_attribute
@@ -367,9 +402,9 @@ BEGIN
 
                 # ? Присваиваем размер языку магазина.
                 INSERT INTO ps_attribute_lang (id_attribute, id_lang, name)
-                VALUES (@sizeId, 1, @sizeName);
-                INSERT INTO ps_attribute_lang (id_attribute, id_lang, name)
-                VALUES (@sizeId, 2, @sizeName);
+                VALUES (@sizeId, 3, @sizeName);
+                /*INSERT INTO ps_attribute_lang (id_attribute, id_lang, name)
+                VALUES (@sizeId, 2, @sizeName);*/
 
                 # ? Присваиваем размер магазину.
                 INSERT INTO ps_attribute_shop (id_attribute, id_shop)
